@@ -1,75 +1,88 @@
-// GoddessEND — AMO Type Resistance Calculator
-// In-browser CSV load (WRNX matrix) → M/A/O selection → triple-form table + CSV download
+// GoddessEND — AMO Type Resistance Calculator (embedded matrix version)
+
+// 1) PASTE your full WRNX matrix CSV (header + rows) between the backticks below.
+//    Example (DO NOT USE THIS EXAMPLE FOR REAL):
+//    Attacker,Fire,Ice,Wind,Water,Earth,Poison,Celestial,Dark,Light,Thunder,Artisan,Totem,Spirit,Hero
+//    Fire,N,R,N,W,W,N,R,W,R,N,R,W,N,N
+//    ...
+const EMBEDDED_MATRIX_CSV = `Attacker	Fire	Ice	Wind	Water	Earth	Poison	Celestial	Dark	Light	Thunder	Artisan	Totem	Spirit	Hero
+Fire	R	W	W	R	N	N	R	W	R	N	R	W	N	N
+Ice	R	R	N	W	W	N	R	N	W	N	N	W	N	N
+Wind	N	N	R	W	W	N	R	N	N	R	N	W	N	N
+Water	W	X	R	R	W	R	R	N	N	R	W	N	N	N
+Earth	W	N	X	R	N	N	R	N	N	W	N	R	N	N
+Poison	N	R	W	W	R	R	W	N	R	N	W	N	X	W
+Celestial	N	N	N	N	R	W	W	R	R	W	N	R	N	N
+Dark	R	N	N	N	R	N	N	R	W	R	W	N	W	W
+Light	X	R	N	N	R	W	N	W	R	R	N	N	W	R
+Thunder	N	N	W	W	X	N	R	W	N	R	N	R	N	N
+Artisan	W	W	W	R	N	N	W	R	N	N	N	N	X	R
+Totem	R	N	N	N	N	W	W	R	N	W	R	R	W	W
+Spirit	N	N	N	N	R	N	N	R	W	N	N	W	W	R
+Hero	N	W	N	N	N	R	W	W	R	N	N	R	R	N
+`; // ← paste here, leave exactly as CSV text
 
 // ---------- CSV utils ----------
-function parseCSV(text) {
-  // Simple parser for our predictable WRNX format (no embedded commas/quotes)
-  return text
-    .trim()
-    .split(/\r?\n/)
-    .map((line) => line.split(",").map((s) => s.trim()));
+function detectDelimiter(firstLine) {
+  const candidates = [",", ";", "\t"];
+  let best = ",";
+  let bestCount = 0;
+  for (const d of candidates) {
+    const c = firstLine.split(d).length;
+    if (c > bestCount) {
+      best = d;
+      bestCount = c;
+    }
+  }
+  return best;
 }
-
+function stripBOM(s) { return (s || "").replace(/^\uFEFF/, ""); }
+function parseCSV(text) {
+  const raw = stripBOM(text || "").trim();
+  if (!raw) return [];
+  const lines = raw.split(/\r?\n/);
+  const delim = detectDelimiter(lines[0] || ",");
+  return lines.map((line) =>
+    line.split(delim).map((s) => stripBOM(s).trim())
+  );
+}
 function toCSV(rows) {
   return rows.map((r) => r.map((v) => (v == null ? "" : String(v))).join(",")).join("\n");
 }
 
 // ---------- AMO rules ----------
 const reactionScale = {
-  "-100": "Immune",
-  "-75": "Tanked",
-  "-50": "Resist",
-  "-25": "Ineffective",
-  "0": "Neutral",
-  "25": "Effective",
-  "50": "Weak",
-  "75": "Suffer",
-  "100": "Obliterate",
+  "-100": "Immune", "-75": "Tanked", "-50": "Resist", "-25": "Ineffective",
+  "0": "Neutral", "25": "Effective", "50": "Weak", "75": "Suffer", "100": "Obliterate",
 };
 const allowedSteps = Object.keys(reactionScale).map(Number).sort((a, b) => a - b);
-
 function snapLabel(total) {
-  // Snap to closest canonical step
-  let best = allowedSteps[0];
-  let bestd = Math.abs(total - best);
-  for (const s of allowedSteps) {
-    const d = Math.abs(total - s);
-    if (d < bestd) {
-      best = s;
-      bestd = d;
-    }
-  }
+  let best = allowedSteps[0], bestd = Math.abs(total - best);
+  for (const s of allowedSteps) { const d = Math.abs(total - s); if (d < bestd) { best = s; bestd = d; } }
   return reactionScale[String(best)];
 }
+function normalizeSecondary(sym) { return sym === "X" ? "R" : sym; }
 
-function normalizeSecondary(sym) {
-  // Non-active X counts as Resist
-  return sym === "X" ? "R" : sym;
-}
-
-function computeForm(lookup, active, s1, s2, types) {
+function computeForm(lookup, active, s1, s2, typesNorm, typesDisplay) {
   const rows = [];
-  for (const atk of types) {
-    const m = lookup[atk][active]; // active cup symbol
-    const a = normalizeSecondary(lookup[atk][s1]); // secondary 1
-    const o = normalizeSecondary(lookup[atk][s2]); // secondary 2
-
+  for (let i = 0; i < typesNorm.length; i++) {
+    const atkKey = typesNorm[i], atkDisplay = typesDisplay[i];
+    const m = (lookup[atkKey] && lookup[atkKey][active.toLowerCase()]) || "N";
+    const a = normalizeSecondary((lookup[atkKey] && lookup[atkKey][s1.toLowerCase()]) || "N");
+    const o = normalizeSecondary((lookup[atkKey] && lookup[atkKey][s2.toLowerCase()]) || "N");
     let total;
-    if (m === "X" || (m === "R" && a === "R" && o === "R")) {
-      total = -100; // Active X or Triple-R => Immune
-    } else {
+    if (m === "X" || (m === "R" && a === "R" && o === "R")) total = -100;
+    else {
       const score = { W: 1, R: -1, N: 0 };
-      total = (score[m] || 0) * 50 + (score[a] || 0) * 25 + (score[o] || 0) * 25; // additive
+      total = (score[m] || 0) * 50 + (score[a] || 0) * 25 + (score[o] || 0) * 25;
     }
-
-    rows.push({ atk, cups: `${m} ${a} ${o}`, total, reaction: snapLabel(total) });
+    rows.push({ atk: atkDisplay, cups: `${m} ${a} ${o}`, total, reaction: snapLabel(total) });
   }
   return rows;
 }
 
 function buildCombinedTable(M, A, O, meso, alpha, omega) {
   const table = document.createElement("table");
-
   const thead = document.createElement("thead");
   const h1 = document.createElement("tr");
   h1.innerHTML = `
@@ -88,33 +101,21 @@ function buildCombinedTable(M, A, O, meso, alpha, omega) {
     <th class="sep"></th>
     <th>Cups</th><th>%</th><th>Reaction</th>
   `;
-  thead.appendChild(h1);
-  thead.appendChild(h2);
-  table.appendChild(thead);
+  thead.appendChild(h1); thead.appendChild(h2); table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
   for (let i = 0; i < meso.length; i++) {
     const tr = document.createElement("tr");
-
-    function badge(reaction) {
-      const clsMap = {
-        Immune: "rImmune",
-        Tanked: "rTanked",
-        Resist: "rResist",
-        Ineffective: "rIneffective",
-        Neutral: "rNeutral",
-        Effective: "rEffective",
-        Weak: "rWeak",
-        Suffer: "rSuffer",
-        Obliterate: "rObliterate",
-      };
-      const cls = clsMap[reaction] || "rNeutral";
+    const badge = (reaction) => {
+      const cls = {
+        Immune: "rImmune", Tanked: "rTanked", Resist: "rResist", Ineffective: "rIneffective",
+        Neutral: "rNeutral", Effective: "rEffective", Weak: "rWeak",
+        Suffer: "rSuffer", Obliterate: "rObliterate",
+      }[reaction] || "rNeutral";
       return `<span class="badge ${cls}">${reaction}</span>`;
-    }
-
+    };
     tr.innerHTML = `
       <td class="attack"><span class="typepill">${meso[i].atk}</span></td>
-
       <td>${meso[i].cups}</td><td>${meso[i].total}</td><td>${badge(meso[i].reaction)}</td>
       <td class="sep"></td>
       <td>${alpha[i].cups}</td><td>${alpha[i].total}</td><td>${badge(alpha[i].reaction)}</td>
@@ -129,142 +130,128 @@ function buildCombinedTable(M, A, O, meso, alpha, omega) {
 
 function makeDownloadCSV(name, M, A, O, meso, alpha, omega) {
   const header = [
-    "Attack",
-    `${M} / ${A} / ${O}`,
-    "Meso %",
-    "Meso Reaction",
-    "",
-    `${A} / ${M} / ${O}`,
-    "Alpha %",
-    "Alpha Reaction",
-    "",
-    `${O} / ${M} / ${A}`,
-    "Omega %",
-    "Omega Reaction",
+    "Attack", `${M} / ${A} / ${O}`, "Meso %", "Meso Reaction", "",
+    `${A} / ${M} / ${O}`, "Alpha %", "Alpha Reaction", "",
+    `${O} / ${M} / ${A}`, "Omega %", "Omega Reaction",
   ];
   const rows = [header];
   for (let i = 0; i < meso.length; i++) {
     rows.push([
-      meso[i].atk,
-      meso[i].cups,
-      meso[i].total,
-      meso[i].reaction,
-      "",
-      alpha[i].cups,
-      alpha[i].total,
-      alpha[i].reaction,
-      "",
-      omega[i].cups,
-      omega[i].total,
-      omega[i].reaction,
+      meso[i].atk, meso[i].cups, meso[i].total, meso[i].reaction, "",
+      alpha[i].cups, alpha[i].total, alpha[i].reaction, "",
+      omega[i].cups, omega[i].total, omega[i].reaction,
     ]);
   }
   const csv = toCSV(rows);
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name || "Goddess"}_Triple_Form_Chart.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = `${name || "Goddess"}_Triple_Form_Chart.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }
 
 // ---------- App state ----------
-let matrix = null; // 2D array
-let types = [];
+let matrix = null;       // 2D array of strings
+let typesDisplay = [];   // header labels as shown
+let typesNorm = [];      // lowercased
 let lookup = null;
 
 // ---------- DOM refs ----------
 const matrixFile = document.getElementById("matrixFile");
-const useSample = document.getElementById("useSample");
-const statusEl = document.getElementById("matrixStatus");
-const goddessName = document.getElementById("goddessName");
-const mesoSel = document.getElementById("mesoType");
-const alphaSel = document.getElementById("alphaType");
-const omegaSel = document.getElementById("omegaType");
+const useSample  = document.getElementById("useSample");
+const statusEl   = document.getElementById("matrixStatus");
+const goddessName= document.getElementById("goddessName");
+const mesoSel    = document.getElementById("mesoType");
+const alphaSel   = document.getElementById("alphaType");
+const omegaSel   = document.getElementById("omegaType");
 const computeBtn = document.getElementById("computeBtn");
-const downloadBtn = document.getElementById("downloadCsvBtn");
-const results = document.getElementById("results");
-const err = document.getElementById("error");
-const rememberBtn = document.getElementById("rememberMatrix");
-const forgetBtn = document.getElementById("forgetMatrix");
+const downloadBtn= document.getElementById("downloadCsvBtn");
+const results    = document.getElementById("results");
+const err        = document.getElementById("error");
+const rememberBtn= document.getElementById("rememberMatrix");
+const forgetBtn  = document.getElementById("forgetMatrix");
 
 // ---------- Matrix handling ----------
 function populateSelectors() {
   [mesoSel, alphaSel, omegaSel].forEach((sel) => {
     sel.innerHTML = "";
-    types.forEach((t) => {
+    typesDisplay.forEach((t) => {
       const opt = document.createElement("option");
-      opt.value = t;
-      opt.textContent = t;
+      opt.value = t; opt.textContent = t;
       sel.appendChild(opt);
     });
   });
 }
-
 function buildLookup() {
-  const headers = matrix[0];
-  const attackerIdx = headers.indexOf("Attacker");
+  const headers = matrix[0].map((h) => stripBOM(String(h || "").trim()));
+  const attackerIdx = headers.findIndex((h) => h.toLowerCase() === "attacker");
   if (attackerIdx !== 0) {
-    throw new Error('First column must be "Attacker"');
+    throw new Error(`First column must be "Attacker" (case-insensitive). Found "${headers[0] || ""}".`);
   }
-  types = headers.slice(1);
+  typesDisplay = headers.slice(1);
+  typesNorm = typesDisplay.map((t) => t.toLowerCase());
   const rows = matrix.slice(1);
   const map = {};
   rows.forEach((row) => {
-    const atk = row[0];
-    map[atk] = {};
+    if (!row.length) return;
+    const atkName = stripBOM(String(row[0] || "").trim());
+    if (!atkName) return;
+    const atkKey = atkName.toLowerCase();
+    map[atkKey] = {};
     for (let i = 1; i < headers.length; i++) {
-      const key = headers[i];
-      map[atk][key] = (row[i] || "").toString().trim().toUpperCase(); // W/R/N/X
+      const defKey = typesNorm[i - 1];
+      const val = String(row[i] || "").trim().toUpperCase(); // W/R/N/X
+      map[atkKey][defKey] = val || "N";
     }
   });
   lookup = map;
+}
+function loadCSVText(csvText) {
+  matrix = parseCSV(csvText);
+  if (!matrix || matrix.length < 2) throw new Error("CSV appears empty or missing rows.");
+  buildLookup();
+  populateSelectors();
+  statusEl.textContent = `Matrix loaded: ${typesDisplay.length} types, ${matrix.length - 1} rows.`;
+  err.textContent = "";
 }
 
 function loadCSVFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
-    try {
-      matrix = parseCSV(reader.result);
-      buildLookup();
-      populateSelectors();
-      statusEl.textContent = `Matrix loaded: ${types.length} types, ${matrix.length - 1} rows.`;
-      err.textContent = "";
-    } catch (e) {
-      err.textContent = "Failed to parse CSV: " + e.message;
-    }
+    try { loadCSVText(reader.result); }
+    catch (e) { err.textContent = "Failed to parse CSV: " + e.message; statusEl.textContent = "No matrix loaded."; }
   };
   reader.readAsText(file);
 }
 
 // ---------- Local storage ----------
 rememberBtn.addEventListener("click", () => {
-  if (!matrix) {
-    err.textContent = "Load a matrix first.";
-    return;
-  }
+  if (!matrix) { err.textContent = "Load a matrix first."; return; }
   localStorage.setItem("GE_matrix_csv", toCSV(matrix));
   statusEl.textContent = "Matrix stored locally (browser).";
 });
-
 forgetBtn.addEventListener("click", () => {
   localStorage.removeItem("GE_matrix_csv");
   statusEl.textContent = "Stored matrix cleared.";
 });
 
-// Try to restore a remembered matrix on load
+// Try to restore embedded or remembered matrix on load
 (function init() {
+  // Priority: remembered → embedded → (none)
   const saved = localStorage.getItem("GE_matrix_csv");
   if (saved) {
+    try { loadCSVText(saved); return; } catch {}
+  }
+  if (EMBEDDED_MATRIX_CSV && EMBEDDED_MATRIX_CSV.trim().length > 0) {
     try {
-      matrix = parseCSV(saved);
-      buildLookup();
-      populateSelectors();
-      statusEl.textContent = `Restored matrix from local storage: ${types.length} types.`;
+      loadCSVText(EMBEDDED_MATRIX_CSV);
+      statusEl.textContent = "Embedded matrix loaded.";
+      return;
     } catch (e) {
-      // ignore restoration errors
+      statusEl.textContent = "Embedded matrix found but failed to parse. Please upload.";
     }
+  } else {
+    statusEl.textContent = "No matrix loaded. Upload a CSV or embed one in app.js.";
   }
 })();
 
@@ -272,62 +259,31 @@ forgetBtn.addEventListener("click", () => {
 matrixFile.addEventListener("change", (e) => {
   if (e.target.files && e.target.files[0]) loadCSVFile(e.target.files[0]);
 });
-
 useSample.addEventListener("click", () => {
-  // Header-only sample to demonstrate expected structure (user must load real matrix)
-  matrix = [
-    [
-      "Attacker",
-      "Fire",
-      "Ice",
-      "Wind",
-      "Water",
-      "Earth",
-      "Poison",
-      "Celestial",
-      "Dark",
-      "Light",
-      "Thunder",
-      "Artisan",
-      "Totem",
-      "Spirit",
-      "Hero",
-    ],
+  const headerOnly = [
+    ["Attacker","Fire","Ice","Wind","Water","Earth","Poison","Celestial","Dark","Light","Thunder","Artisan","Totem","Spirit","Hero"]
   ];
+  matrix = headerOnly;
   buildLookup();
   populateSelectors();
-  statusEl.textContent = "Sample header loaded. Please load your real WRNX matrix.";
+  statusEl.textContent = "Sample header loaded. Please load your real WRNX matrix or embed it in app.js.";
 });
 
 computeBtn.addEventListener("click", () => {
-  err.textContent = "";
-  results.innerHTML = "";
-  downloadBtn.disabled = true;
+  err.textContent = ""; results.innerHTML = ""; downloadBtn.disabled = true;
+  if (!lookup) { err.textContent = "Load/Embed your WRNX matrix first."; return; }
 
-  if (!lookup) {
-    err.textContent = "Load your WRNX matrix first.";
-    return;
-  }
   const name = goddessName.value.trim() || "Goddess";
-  const M = mesoSel.value;
-  const A = alphaSel.value;
-  const O = omegaSel.value;
-  if (!M || !A || !O) {
-    err.textContent = "Select M/A/O types.";
-    return;
-  }
+  const M = mesoSel.value, A = alphaSel.value, O = omegaSel.value;
+  if (!M || !A || !O) { err.textContent = "Select M/A/O types."; return; }
 
-  // Compute three forms using the matrix
-  const typeList = types.slice(); // 14 types in header order
-  const meso = computeForm(lookup, M, A, O, typeList);
-  const alpha = computeForm(lookup, A, M, O, typeList);
-  const omega = computeForm(lookup, O, M, A, typeList);
+  const meso  = computeForm(lookup, M, A, O, typesNorm, typesDisplay);
+  const alpha = computeForm(lookup, A, M, O, typesNorm, typesDisplay);
+  const omega = computeForm(lookup, O, M, A, typesNorm, typesDisplay);
 
-  // Render and enable CSV download
   const table = buildCombinedTable(M, A, O, meso, alpha, omega);
   results.appendChild(table);
 
   downloadBtn.disabled = false;
   downloadBtn.onclick = () => makeDownloadCSV(name, M, A, O, meso, alpha, omega);
 });
-Add input.html
