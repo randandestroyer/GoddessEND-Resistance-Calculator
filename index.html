@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GoddessEND — AMO Type Resistance Calculator</title>
+  <!-- Place this file alongside styles.css and app.js -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>GoddessEND — AMO Type Resistance Calculator</h1>
+    <p>
+      Load your <strong>Eon Type Matrix (WRNX)</strong> CSV, pick a goddess’s M/A/O, and generate the triple-form chart.<br>
+      <em>Rules: M=±50, A=±25, O=±25; active X = Immune (−100), non-active X = Resist (−25), triple R = Immune.</em>
+    </p>
+  </header>
+
+  <section class="panel">
+    <h2>1) Load Eon Type Matrix (WRNX)</h2>
+    <input type="file" id="matrixFile" accept=".csv">
+    <button id="useSample">Use sample header</button>
+    <div id="matrixStatus" class="status">No matrix loaded.</div>
+  </section>
+
+  <section class="panel">
+    <h2>2) Select Cups & Compute</h2>
+    <div class="row">
+      <label>Goddess Name
+        <input id="goddessName" placeholder="Ashalla">
+      </label>
+    </div>
+
+    <div class="row">
+      <div class="cup-group">
+        <h3>Meso (Active)</h3>
+        <select id="mesoType"></select>
+      </div>
+      <div class="cup-group">
+        <h3>Alpha</h3>
+        <select id="alphaType"></select>
+      </div>
+      <div class="cup-group">
+        <h3>Omega</h3>
+        <select id="omegaType"></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="computeBtn">Compute Triple-Form</button>
+      <button id="downloadCsvBtn" disabled>Download CSV</button>
+      <button id="rememberMatrix">Remember Matrix (local)</button>
+      <button id="forgetMatrix">Forget Matrix</button>
+    </div>
+    <div id="error" class="error"></div>
+  </section>
+
+  <section class="panel">
+    <h2>3) Results</h2>
+    <div id="results"></div>
+  </section>
+
+  <footer>
+    <p>
+      Palette: Immune=Black/Blue-White, Tanked=Navy, Resist=Sky, Ineffective=Cyan, Neutral=White,
+      Effective=Yellow, Weak=Vermilion, Suffer=Red/Black, Obliterate=Dark Purple/White.
+    </p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
+Add index.html
