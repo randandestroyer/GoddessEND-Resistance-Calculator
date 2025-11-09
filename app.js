@@ -6,7 +6,8 @@
 // ===================== EMBEDDED MATRIX (optional) =====================
 // Paste your full WRNX CSV (header + rows) between the backticks.
 // Tabs/semicolons/commas are fine — parser auto-detects.
-const EMBEDDED_MATRIX_CSV = `Attacker	Fire	Ice	Wind	Water	Earth	Poison	Celestial	Dark	Light	Thunder	Artisan	Totem	Spirit	Hero
+const EMBEDDED_MATRIX_CSV = 
+  `Attacker	Fire	Ice	Wind	Water	Earth	Poison	Celestial	Dark	Light	Thunder	Artisan	Totem	Spirit	Hero
 Fire	R	W	W	R	N	N	R	W	R	N	R	W	N	N
 Ice	R	R	N	W	W	N	R	N	W	N	N	W	N	N
 Wind	N	N	R	W	W	N	R	N	N	R	N	W	N	N
