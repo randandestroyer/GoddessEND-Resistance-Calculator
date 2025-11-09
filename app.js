@@ -1,11 +1,11 @@
-// GoddessEND — AMO Type Resistance Calculator
-// Now with:
-// - Base type totals (sum of W/R/N/X for each pure type defender)
-// - Cup summaries (Meso/Alpha/Omega sums + delta vs base type)
 
-// ===================== EMBEDDED MATRIX (optional) =====================
-// Paste your full WRNX CSV (header + rows) between the backticks.
-// Tabs/semicolons/commas are fine — parser auto-detects.
+// GoddessEND — AMO Type Resistance Calculator (embedded matrix version)
+
+// 1) PASTE your full WRNX matrix CSV (header + rows) between the backticks below.
+//    Example (DO NOT USE THIS EXAMPLE FOR REAL):
+//    Attacker,Fire,Ice,Wind,Water,Earth,Poison,Celestial,Dark,Light,Thunder,Artisan,Totem,Spirit,Hero
+//    Fire,N,R,N,W,W,N,R,W,R,N,R,W,N,N
+//    ...
 const EMBEDDED_MATRIX_CSV = `Attacker	Fire	Ice	Wind	Water	Earth	Poison	Celestial	Dark	Light	Thunder	Artisan	Totem	Spirit	Hero
 Fire	R	W	W	R	N	N	R	W	R	N	R	W	N	N
 Ice	R	R	N	W	W	N	R	N	W	N	N	W	N	N
@@ -21,15 +21,19 @@ Artisan	W	W	W	R	N	N	W	R	N	N	N	N	X	R
 Totem	R	N	N	N	N	W	W	R	N	W	R	R	W	W
 Spirit	N	N	N	N	R	N	N	R	W	N	N	W	W	R
 Hero	N	W	N	N	N	R	W	W	R	N	N	R	R	N
-`; // ← your full Eon WRNX matrix here
+`; // ← paste here, leave exactly as CSV text
 
-// ========================= CSV utilities =========================
+// ---------- CSV utils ----------
 function detectDelimiter(firstLine) {
   const candidates = [",", ";", "\t"];
-  let best = ",", bestCount = 0;
+  let best = ",";
+  let bestCount = 0;
   for (const d of candidates) {
     const c = firstLine.split(d).length;
-    if (c > bestCount) { best = d; bestCount = c; }
+    if (c > bestCount) {
+      best = d;
+      bestCount = c;
+    }
   }
   return best;
 }
@@ -39,13 +43,15 @@ function parseCSV(text) {
   if (!raw) return [];
   const lines = raw.split(/\r?\n/);
   const delim = detectDelimiter(lines[0] || ",");
-  return lines.map((line) => line.split(delim).map((s) => stripBOM(s).trim()));
+  return lines.map((line) =>
+    line.split(delim).map((s) => stripBOM(s).trim())
+  );
 }
 function toCSV(rows) {
   return rows.map((r) => r.map((v) => (v == null ? "" : String(v))).join(",")).join("\n");
 }
 
-// ========================= AMO rules =========================
+// ---------- AMO rules ----------
 const reactionScale = {
   "-100": "Immune", "-75": "Tanked", "-50": "Resist", "-25": "Ineffective",
   "0": "Neutral", "25": "Effective", "50": "Weak", "75": "Suffer", "100": "Obliterate",
@@ -53,17 +59,11 @@ const reactionScale = {
 const allowedSteps = Object.keys(reactionScale).map(Number).sort((a, b) => a - b);
 function snapLabel(total) {
   let best = allowedSteps[0], bestd = Math.abs(total - best);
-  for (const s of allowedSteps) {
-    const d = Math.abs(total - s);
-    if (d < bestd) { best = s; bestd = d; }
-  }
+  for (const s of allowedSteps) { const d = Math.abs(total - s); if (d < bestd) { best = s; bestd = d; } }
   return reactionScale[String(best)];
 }
 function normalizeSecondary(sym) { return sym === "X" ? "R" : sym; }
-function scoreOf(sym) { return sym === "W" ? 1 : sym === "R" ? -1 : 0; }
-function totalToRate(total) { return total <= -100 ? 0.0 : +(1 + total / 100).toFixed(2); }
 
-// ========================= Compute forms =========================
 function computeForm(lookup, active, s1, s2, typesNorm, typesDisplay) {
   const rows = [];
   for (let i = 0; i < typesNorm.length; i++) {
@@ -71,17 +71,17 @@ function computeForm(lookup, active, s1, s2, typesNorm, typesDisplay) {
     const m = (lookup[atkKey] && lookup[atkKey][active.toLowerCase()]) || "N";
     const a = normalizeSecondary((lookup[atkKey] && lookup[atkKey][s1.toLowerCase()]) || "N");
     const o = normalizeSecondary((lookup[atkKey] && lookup[atkKey][s2.toLowerCase()]) || "N");
-
     let total;
     if (m === "X" || (m === "R" && a === "R" && o === "R")) total = -100;
-    else total = scoreOf(m) * 50 + scoreOf(a) * 25 + scoreOf(o) * 25;
-
+    else {
+      const score = { W: 1, R: -1, N: 0 };
+      total = (score[m] || 0) * 50 + (score[a] || 0) * 25 + (score[o] || 0) * 25;
+    }
     rows.push({ atk: atkDisplay, cups: `${m} ${a} ${o}`, total, reaction: snapLabel(total) });
   }
   return rows;
 }
 
-// ========================= Build main table =========================
 function buildCombinedTable(M, A, O, meso, alpha, omega) {
   const table = document.createElement("table");
   const thead = document.createElement("thead");
@@ -105,17 +105,16 @@ function buildCombinedTable(M, A, O, meso, alpha, omega) {
   thead.appendChild(h1); thead.appendChild(h2); table.appendChild(thead);
 
   const tbody = document.createElement("tbody");
-  const badge = (reaction) => {
-    const cls = {
-      Immune: "rImmune", Tanked: "rTanked", Resist: "rResist", Ineffective: "rIneffective",
-      Neutral: "rNeutral", Effective: "rEffective", Weak: "rWeak",
-      Suffer: "rSuffer", Obliterate: "rObliterate",
-    }[reaction] || "rNeutral";
-    return `<span class="badge ${cls}">${reaction}</span>`;
-  };
-
   for (let i = 0; i < meso.length; i++) {
     const tr = document.createElement("tr");
+    const badge = (reaction) => {
+      const cls = {
+        Immune: "rImmune", Tanked: "rTanked", Resist: "rResist", Ineffective: "rIneffective",
+        Neutral: "rNeutral", Effective: "rEffective", Weak: "rWeak",
+        Suffer: "rSuffer", Obliterate: "rObliterate",
+      }[reaction] || "rNeutral";
+      return `<span class="badge ${cls}">${reaction}</span>`;
+    };
     tr.innerHTML = `
       <td class="attack"><span class="typepill">${meso[i].atk}</span></td>
       <td>${meso[i].cups}</td><td>${meso[i].total}</td><td>${badge(meso[i].reaction)}</td>
@@ -130,7 +129,6 @@ function buildCombinedTable(M, A, O, meso, alpha, omega) {
   return table;
 }
 
-// ========================= CSV download =========================
 function makeDownloadCSV(name, M, A, O, meso, alpha, omega) {
   const header = [
     "Attack", `${M} / ${A} / ${O}`, "Meso %", "Meso Reaction", "",
@@ -153,150 +151,28 @@ function makeDownloadCSV(name, M, A, O, meso, alpha, omega) {
   a.click(); URL.revokeObjectURL(url);
 }
 
-// ========================= Base sums (pure types) =========================
-// Compute baseline sum for each defender type (pure monotype).
-// Uses the WRNX lookup + types list.
-function computeBaseTypeSums(lookup, typesNorm, typesDisplay) {
-  const map = {};
-  // For each defender type (column)
-  for (let j = 0; j < typesNorm.length; j++) {
-    const defKey = typesNorm[j];      // lowercased defender
-    const defName = typesDisplay[j];  // display name
-    let sum = 0;
-    // Sum over all attackers
-    for (let i = 0; i < typesNorm.length; i++) {
-      const atkKey = typesNorm[i];
-      const sym = (lookup[atkKey] && lookup[atkKey][defKey]) || "N";
-      let val = 0;
-      if      (sym === "W")  val = 50;
-      else if (sym === "R")  val = -50;
-      else if (sym === "X")  val = -100;
-      else                   val = 0;
-      sum += val;
-    }
-    map[defName] = sum;
-  }
-  return map;
-}
-
-// Render a small panel listing base sums for all 14 types.
-function renderBaseTypePanel(container, baseSums) {
-  if (!baseSums) return;
-  const box = document.createElement("div");
-  box.className = "panel-mini";
-
-  const title = document.createElement("h3");
-  title.textContent = "Base Type Totals (pure monotype)";
-  box.appendChild(title);
-
-  const list = document.createElement("div");
-  list.className = "basesums";
-
-  const keys = Object.keys(baseSums);
-  keys.forEach((k) => {
-    const row = document.createElement("div");
-    row.className = "basesums-row";
-    row.innerHTML = `<span class="basesums-type">${k}</span><span class="basesums-val">${baseSums[k]}</span>`;
-    list.appendChild(row);
-  });
-
-  box.appendChild(list);
-  container.appendChild(box);
-}
-
-// Render a panel summarizing each Cup vs its base type.
-function renderCupSummary(container, name, M, A, O, meso, alpha, omega, baseSums) {
-  const box = document.createElement("div");
-  box.className = "panel-mini";
-
-  const title = document.createElement("h3");
-  title.textContent = `Cup Summary for ${name || "Goddess"}`;
-  box.appendChild(title);
-
-  function sumTotals(rows) {
-    return rows.reduce((acc, r) => acc + (r.total || 0), 0);
-  }
-
-  const mesoSum  = sumTotals(meso);
-  const alphaSum = sumTotals(alpha);
-  const omegaSum = sumTotals(omega);
-
-  const mesoBase  = baseSums[M] ?? 0;
-  const alphaBase = baseSums[A] ?? 0;
-  const omegaBase = baseSums[O] ?? 0;
-
-  const mesoDelta  = mesoSum  - mesoBase;
-  const alphaDelta = alphaSum - alphaBase;
-  const omegaDelta = omegaSum - omegaBase;
-
-  const table = document.createElement("table");
-  table.className = "cupsum-table";
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Form</th>
-        <th>Primary Type</th>
-        <th>Cup Sum</th>
-        <th>Base Sum</th>
-        <th>Δ vs Base</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Meso</td>
-        <td>${M}</td>
-        <td>${mesoSum}</td>
-        <td>${mesoBase}</td>
-        <td>${mesoDelta}</td>
-      </tr>
-      <tr>
-        <td>Alpha</td>
-        <td>${A}</td>
-        <td>${alphaSum}</td>
-        <td>${alphaBase}</td>
-        <td>${alphaDelta}</td>
-      </tr>
-      <tr>
-        <td>Omega</td>
-        <td>${O}</td>
-        <td>${omegaSum}</td>
-        <td>${omegaBase}</td>
-        <td>${omegaDelta}</td>
-      </tr>
-    </tbody>
-  `;
-  box.appendChild(table);
-
-  const note = document.createElement("p");
-  note.className = "cupsum-note";
-  note.textContent = "Negative Δ means this Cup is more defensively loaded than its pure type archetype. Positive Δ means more exposed.";
-  box.appendChild(note);
-
-  container.appendChild(box);
-}
-
-// ========================= App state / DOM =========================
-let matrix = null;
-let typesDisplay = [];
-let typesNorm = [];
+// ---------- App state ----------
+let matrix = null;       // 2D array of strings
+let typesDisplay = [];   // header labels as shown
+let typesNorm = [];      // lowercased
 let lookup = null;
-let baseTypeSums = null;
 
-const matrixFile   = document.getElementById("matrixFile");
-const useSample    = document.getElementById("useSample");
-const statusEl     = document.getElementById("matrixStatus");
-const goddessName  = document.getElementById("goddessName");
-const mesoSel      = document.getElementById("mesoType");
-const alphaSel     = document.getElementById("alphaType");
-const omegaSel     = document.getElementById("omegaType");
-const computeBtn   = document.getElementById("computeBtn");
-const downloadBtn  = document.getElementById("downloadCsvBtn");
-const results      = document.getElementById("results");
-const err          = document.getElementById("error");
-const rememberBtn  = document.getElementById("rememberMatrix");
-const forgetBtn    = document.getElementById("forgetMatrix");
+// ---------- DOM refs ----------
+const matrixFile = document.getElementById("matrixFile");
+const useSample  = document.getElementById("useSample");
+const statusEl   = document.getElementById("matrixStatus");
+const goddessName= document.getElementById("goddessName");
+const mesoSel    = document.getElementById("mesoType");
+const alphaSel   = document.getElementById("alphaType");
+const omegaSel   = document.getElementById("omegaType");
+const computeBtn = document.getElementById("computeBtn");
+const downloadBtn= document.getElementById("downloadCsvBtn");
+const results    = document.getElementById("results");
+const err        = document.getElementById("error");
+const rememberBtn= document.getElementById("rememberMatrix");
+const forgetBtn  = document.getElementById("forgetMatrix");
 
-// ========================= Matrix handling =========================
+// ---------- Matrix handling ----------
 function populateSelectors() {
   [mesoSel, alphaSel, omegaSel].forEach((sel) => {
     sel.innerHTML = "";
@@ -310,7 +186,9 @@ function populateSelectors() {
 function buildLookup() {
   const headers = matrix[0].map((h) => stripBOM(String(h || "").trim()));
   const attackerIdx = headers.findIndex((h) => h.toLowerCase() === "attacker");
-  if (attackerIdx !== 0) throw new Error(`First column must be "Attacker". Found "${headers[0] || ""}".`);
+  if (attackerIdx !== 0) {
+    throw new Error(`First column must be "Attacker" (case-insensitive). Found "${headers[0] || ""}".`);
+  }
   typesDisplay = headers.slice(1);
   typesNorm = typesDisplay.map((t) => t.toLowerCase());
   const rows = matrix.slice(1);
@@ -328,16 +206,16 @@ function buildLookup() {
     }
   });
   lookup = map;
-  // compute base type sums whenever we rebuild lookup
-  baseTypeSums = computeBaseTypeSums(lookup, typesNorm, typesDisplay);
 }
 function loadCSVText(csvText) {
   matrix = parseCSV(csvText);
   if (!matrix || matrix.length < 2) throw new Error("CSV appears empty or missing rows.");
-  buildLookup(); populateSelectors();
+  buildLookup();
+  populateSelectors();
   statusEl.textContent = `Matrix loaded: ${typesDisplay.length} types, ${matrix.length - 1} rows.`;
   err.textContent = "";
 }
+
 function loadCSVFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -347,7 +225,7 @@ function loadCSVFile(file) {
   reader.readAsText(file);
 }
 
-// ========================= Local storage & init =========================
+// ---------- Local storage ----------
 rememberBtn.addEventListener("click", () => {
   if (!matrix) { err.textContent = "Load a matrix first."; return; }
   localStorage.setItem("GE_matrix_csv", toCSV(matrix));
@@ -357,34 +235,43 @@ forgetBtn.addEventListener("click", () => {
   localStorage.removeItem("GE_matrix_csv");
   statusEl.textContent = "Stored matrix cleared.";
 });
+
+// Try to restore embedded or remembered matrix on load
 (function init() {
+  // Priority: remembered → embedded → (none)
   const saved = localStorage.getItem("GE_matrix_csv");
   if (saved) {
     try { loadCSVText(saved); return; } catch {}
   }
   if (EMBEDDED_MATRIX_CSV && EMBEDDED_MATRIX_CSV.trim().length > 0) {
-    try { loadCSVText(EMBEDDED_MATRIX_CSV); statusEl.textContent = "Embedded matrix loaded."; return; }
-    catch { statusEl.textContent = "Embedded matrix found but failed to parse. Please upload."; }
+    try {
+      loadCSVText(EMBEDDED_MATRIX_CSV);
+      statusEl.textContent = "Embedded matrix loaded.";
+      return;
+    } catch (e) {
+      statusEl.textContent = "Embedded matrix found but failed to parse. Please upload.";
+    }
   } else {
     statusEl.textContent = "No matrix loaded. Upload a CSV or embed one in app.js.";
   }
 })();
 
-// ========================= UI bindings =========================
+// ---------- UI bindings ----------
 matrixFile.addEventListener("change", (e) => {
   if (e.target.files && e.target.files[0]) loadCSVFile(e.target.files[0]);
 });
 useSample.addEventListener("click", () => {
-  matrix = [["Attacker","Fire","Ice","Wind","Water","Earth","Poison","Celestial","Dark","Light","Thunder","Artisan","Totem","Spirit","Hero"]];
-  buildLookup(); populateSelectors();
+  const headerOnly = [
+    ["Attacker","Fire","Ice","Wind","Water","Earth","Poison","Celestial","Dark","Light","Thunder","Artisan","Totem","Spirit","Hero"]
+  ];
+  matrix = headerOnly;
+  buildLookup();
+  populateSelectors();
   statusEl.textContent = "Sample header loaded. Please load your real WRNX matrix or embed it in app.js.";
 });
 
 computeBtn.addEventListener("click", () => {
-  err.textContent = "";
-  results.innerHTML = "";
-  downloadBtn.disabled = true;
-
+  err.textContent = ""; results.innerHTML = ""; downloadBtn.disabled = true;
   if (!lookup) { err.textContent = "Load/Embed your WRNX matrix first."; return; }
 
   const name = goddessName.value.trim() || "Goddess";
@@ -398,13 +285,6 @@ computeBtn.addEventListener("click", () => {
   const table = buildCombinedTable(M, A, O, meso, alpha, omega);
   results.appendChild(table);
 
-  // Show base type sums under the table
-  if (baseTypeSums) {
-    renderBaseTypePanel(results, baseTypeSums);
-    renderCupSummary(results, name, M, A, O, meso, alpha, omega, baseTypeSums);
-  }
-
   downloadBtn.disabled = false;
   downloadBtn.onclick = () => makeDownloadCSV(name, M, A, O, meso, alpha, omega);
 });
-Add index.html
