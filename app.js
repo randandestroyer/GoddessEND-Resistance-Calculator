@@ -20,7 +20,8 @@ Thunder	N	N	W	W	X	N	R	W	N	R	N	R	N	N
 Artisan	W	W	W	R	N	N	W	R	N	N	N	N	X	R
 Totem	R	N	N	N	N	W	W	R	N	W	R	R	W	W
 Spirit	N	N	N	N	R	N	N	R	W	N	N	W	W	R
-Hero	N	W	N	N	N	R	W	W	R	N	N	R	R	N`; // ← your full Eon WRNX matrix here
+Hero	N	W	N	N	N	R	W	W	R	N	N	R	R	N
+`; // ← your full Eon WRNX matrix here
 
 // ========================= CSV utilities =========================
 function detectDelimiter(firstLine) {
